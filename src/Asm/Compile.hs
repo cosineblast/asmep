@@ -24,7 +24,7 @@ import Data.List (sortBy)
 import Data.Function (on)
 
 type Constant = Word8
-type Address = Word8
+type Address = Int
 type Name = String
 
 type Block = Seq Word8
@@ -98,6 +98,19 @@ compileOperation (Ast.CommandOp command) = compileCommand command
 compileOperation (Ast.InstructionOp instruction) = compileInstruction instruction
 compileOperation (Ast.LabelOp label) = compileLabel label
 
+incrementNextAddress :: Int -> Compile ()
+incrementNextAddress n = do
+  ctx <- getCtx
+
+  let address = ctxNextAddress ctx
+
+  when (address + n > 256) $ do
+    liftExcept $ throwE $ CompilationError "This operation goes past the end of RAM"
+
+  putCtx $ ctx {ctxNextAddress = address + n}
+
+
+
 compileCommand :: Ast.Command -> Compile ()
 compileCommand (Ast.Command "byte" values) = do
   constants <- mapM resolveValue values
@@ -105,19 +118,15 @@ compileCommand (Ast.Command "byte" values) = do
 
   ctx <- getCtx
   let block = ctxCurrentBlock ctx
-  let address = ctxNextAddress ctx
 
-  when (fromIntegral address + length constants' > 255) $ do
-    liftExcept $ throwE $ CompilationError "This operation goes past the end of RAM"
+  putCtx $ ctx { ctxCurrentBlock = block Seq.>< constants' }
 
-  putCtx $ ctx { ctxCurrentBlock = block Seq.>< constants',
-                 ctxNextAddress = address + (fromIntegral $ length constants')
-               }
+  incrementNextAddress $ length constants'
 
 
 compileCommand (Ast.Command "at" [value]) = do
   address <- resolveValue value
-  pushBlock address
+  pushBlock $ fromIntegral address
   return ()
 
 compileCommand (Ast.Command "define" [(Ast.Identifier name), value]) = do
@@ -142,9 +151,10 @@ compileInstruction instruction = do
   (opcode, target) <- renderInstruction instruction
   ctx <- getCtx
   let block = ctxCurrentBlock ctx
-  let address = ctxNextAddress ctx
-  putCtx $ ctx { ctxCurrentBlock = block Seq.>< (Seq.fromList [opcode, target]),
-                 ctxNextAddress = address + 2 }
+
+  putCtx $ ctx { ctxCurrentBlock = block Seq.>< (Seq.fromList [opcode, target]) }
+
+  incrementNextAddress 2
 
 compileLabel :: Ast.Label -> Compile ()
 compileLabel (Ast.Label name) = do
@@ -156,7 +166,7 @@ compileLabel (Ast.Label name) = do
   when (name `Map.member` vars) $ do
     liftExcept $ throwE $ CompilationError $ "The name " ++ name ++ " is already being utilized."
 
-  let vars' = Map.insert name address vars
+  let vars' = Map.insert name (fromIntegral address) vars
 
   putCtx $ context { ctxVariables = vars' }
   return ()
@@ -207,12 +217,11 @@ tryFuseBlocks blocks =
 fuseBlocks :: [(Address, Block)] -> Seq Word8
 fuseBlocks sorted =
   let (lastAddr, result) = foldl step (0, Seq.empty) sorted
-      in result Seq.>< Seq.fromList (replicate (255 - lastAddr) 0)
+      in result Seq.>< Seq.fromList (replicate (256 - lastAddr) 0)
 
 step :: (Int, Seq Word8) -> (Address, Block) -> (Int, Seq Word8)
 step (currentAddr, result) (addr, block) =
-  let addr' = fromIntegral addr
-      currentAddr' = currentAddr
-      nextAddr = addr' + length block
-      nextResult = result Seq.>< Seq.fromList (replicate (addr' - currentAddr') 0) Seq.>< block
+  let currentAddr' = currentAddr
+      nextAddr = addr + length block
+      nextResult = result Seq.>< Seq.fromList (replicate (addr - currentAddr') 0) Seq.>< block
       in (nextAddr, nextResult)

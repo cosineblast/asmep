@@ -14,5 +14,4 @@ main = do
       print ast
       case compile ast of
         Left issue -> putStrLn "Compilation error" >> print issue
-        Right result -> print result
-
+        Right result -> print (length result) >> print result
