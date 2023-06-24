@@ -37,7 +37,7 @@ data Context = Context { ctxVariables :: Map Name Constant,
                        }
   deriving (Show)
 
-data CompilationError = CompilationError
+data CompilationError = CompilationError String
   deriving (Show)
 
 newtype Compile a = Compile (StateT Context (Except CompilationError) a)
@@ -108,7 +108,7 @@ compileCommand (Ast.Command "byte" values) = do
   let address = ctxNextAddress ctx
 
   when (fromIntegral address + length constants' > 255) $ do
-    liftExcept $ throwE CompilationError
+    liftExcept $ throwE $ CompilationError "This operation goes past the end of RAM"
 
   putCtx $ ctx { ctxCurrentBlock = block Seq.>< constants',
                  ctxNextAddress = address + (fromIntegral $ length constants')
@@ -127,7 +127,7 @@ compileCommand (Ast.Command "define" [(Ast.Identifier name), value]) = do
   let vars = ctxVariables context
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE CompilationError
+    liftExcept $ throwE $ CompilationError $ "The variable '" ++ name ++ "' already exists."
 
   let vars' = Map.insert name value' vars
 
@@ -154,7 +154,7 @@ compileLabel (Ast.Label name) = do
   let address = ctxNextAddress context
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE CompilationError
+    liftExcept $ throwE $ CompilationError $ "The name " ++ name ++ " is already being utilized."
 
   let vars' = Map.insert name address vars
 
@@ -192,7 +192,7 @@ resolveVariable :: Name -> Compile Constant
 resolveVariable name = do
   vars <- ctxVariables <$> getCtx
   case Map.lookup name vars of
-    Nothing -> liftExcept $ throwE CompilationError
+    Nothing -> liftExcept $ throwE $ CompilationError $ "The variable '" ++ name ++ "' does not exist."
     (Just x) -> return x
 
 tryFuseBlocks :: [(Address, Block)] -> Compile (Seq Word8)
@@ -201,7 +201,7 @@ tryFuseBlocks blocks =
       problematic ((x,b1), (y,_)) = fromIntegral x + length b1 > fromIntegral y
       hasIssues = not (null blocks) && any problematic (zip sorted (tail sorted))
       in if hasIssues
-         then liftExcept $ throwE CompilationError
+         then liftExcept $ throwE $ CompilationError "There are overlapping .at blocks"
          else return $ fuseBlocks sorted
 
 fuseBlocks :: [(Address, Block)] -> Seq Word8

@@ -24,18 +24,18 @@ validateAst ops = fromJust $ find isJust $ map validateOp ops
 validateOp :: Ast.Operation -> Maybe ValidationError
 validateOp (Ast.InstructionOp instruction) = validateInstruction instruction
 validateOp (Ast.CommandOp command) = validateCommand command
-validateOp (Ast.LabelOp label) = Nothing
+validateOp (Ast.LabelOp _) = Nothing
 
 -- TODO: keep record of SourcePos
 -- TODO: validate sizes
 
 validateInstruction :: Ast.Instruction -> Maybe ValidationError
-validateInstruction (Ast.Instruction "nop" (Just x))
+validateInstruction (Ast.Instruction "nop" (Just _))
   = Just "NOP instruction must not have an argument"
 validateInstruction (Ast.Instruction "nop" Nothing) = Nothing
 validateInstruction (Ast.Instruction name Nothing) =
   Just $ "Instruction " ++ name  ++ " expected an argument."
-validateInstruction (Ast.Instruction name (Just arg))
+validateInstruction (Ast.Instruction name (Just _))
   | (map toLower name) `Set.member` validInstructionNames = Nothing
   | otherwise = Just $ "Unknown instruction name " ++ name
 

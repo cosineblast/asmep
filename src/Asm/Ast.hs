@@ -8,7 +8,8 @@ module Asm.Ast
     Value(..),
     Label(..),
     Source,
-    parse
+    parse,
+    SourcePos
   )
 where
 
