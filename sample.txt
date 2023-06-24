@@ -1,21 +1,19 @@
-.byte 1 2 3
+.define x1 200
+.define x2 199
 
-.at 3
-
-.byte 3 4 5
-
-.at 6
-
-lda 10
-
+.at 0
 nop
 
-nop
+in x1
+in x2
 
+lda x1
+add x2
 
-.at 254
+sta x1
 
-nop
+out x1
 
-.at 40
-.byte 100
+.at 200
+.byte 20
+

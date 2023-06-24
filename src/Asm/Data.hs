@@ -14,7 +14,7 @@ import Data.Char
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-type ValidationError = String
+type ValidationError = Ast.Sourced String
 
 
 validateAst :: Ast.Source -> Maybe ValidationError
@@ -27,28 +27,30 @@ validateOp (Ast.CommandOp command) = validateCommand command
 validateOp (Ast.LabelOp _) = Nothing
 
 -- TODO: keep record of SourcePos
+-- TODO: consider making a SourcedMonad
 -- TODO: validate sizes
 
 validateInstruction :: Ast.Instruction -> Maybe ValidationError
-validateInstruction (Ast.Instruction "nop" (Just _))
-  = Just "NOP instruction must not have an argument"
-validateInstruction (Ast.Instruction "nop" Nothing) = Nothing
-validateInstruction (Ast.Instruction name Nothing) =
-  Just $ "Instruction " ++ name  ++ " expected an argument."
-validateInstruction (Ast.Instruction name (Just _))
+validateInstruction (Ast.Instruction (pos, "nop") (Just _))
+  = Just (pos, "NOP instruction must not have an argument")
+
+validateInstruction (Ast.Instruction (_, "nop") Nothing) = Nothing
+validateInstruction (Ast.Instruction (pos, name) Nothing) =
+  Just $ (pos, "Instruction " ++ name  ++ " expected an argument.")
+validateInstruction (Ast.Instruction (pos, name) (Just _))
   | (map toLower name) `Set.member` validInstructionNames = Nothing
-  | otherwise = Just $ "Unknown instruction name " ++ name
+  | otherwise = Just $ (pos, "Unknown instruction name " ++ name)
 
 validateCommand :: Ast.Command -> Maybe ValidationError
 
-validateCommand (Ast.Command name _)
-  | name `Set.notMember` validCommandNames = Just $ "Unknown command name " ++ name
+validateCommand (Ast.Command (pos, name) _)
+  | name `Set.notMember` validCommandNames = Just $ (pos, "Unknown command name " ++ name)
 
-validateCommand (Ast.Command "define" [(Ast.Identifier _), _]) = Nothing
-validateCommand (Ast.Command "at" [_]) = Nothing
-validateCommand (Ast.Command "byte" [_]) = Nothing
+validateCommand (Ast.Command (_, "define" )[(Ast.Identifier _), _]) = Nothing
+validateCommand (Ast.Command (_, "at") [_]) = Nothing
+validateCommand (Ast.Command (_, "byte") [_]) = Nothing
 
-validateCommand command = Just $ "Illegal combination of commands and arguments: " ++ show command
+validateCommand (Ast.Command (pos, _) _) = Just $ (pos, "Illegal combination of commands and arguments")
 
 
 validCommandNames :: Set String

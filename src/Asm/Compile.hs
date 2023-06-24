@@ -37,7 +37,7 @@ data Context = Context { ctxVariables :: Map Name Constant,
                        }
   deriving (Show)
 
-data CompilationError = CompilationError String
+data CompilationError = CompilationError (Ast.Sourced String)
   deriving (Show)
 
 newtype Compile a = Compile (StateT Context (Except CompilationError) a)
@@ -98,21 +98,21 @@ compileOperation (Ast.CommandOp command) = compileCommand command
 compileOperation (Ast.InstructionOp instruction) = compileInstruction instruction
 compileOperation (Ast.LabelOp label) = compileLabel label
 
-incrementNextAddress :: Int -> Compile ()
-incrementNextAddress n = do
+incrementNextAddress :: Ast.SourcePos -> Int -> Compile ()
+incrementNextAddress pos n = do
   ctx <- getCtx
 
   let address = ctxNextAddress ctx
 
   when (address + n > 256) $ do
-    liftExcept $ throwE $ CompilationError "This operation goes past the end of RAM"
+    liftExcept $ throwE $ CompilationError (pos, "This operation goes past the end of RAM")
 
   putCtx $ ctx {ctxNextAddress = address + n}
 
 
 
 compileCommand :: Ast.Command -> Compile ()
-compileCommand (Ast.Command "byte" values) = do
+compileCommand (Ast.Command (pos, "byte") values) = do
   constants <- mapM resolveValue values
   let constants' = Seq.fromList constants
 
@@ -121,22 +121,22 @@ compileCommand (Ast.Command "byte" values) = do
 
   putCtx $ ctx { ctxCurrentBlock = block Seq.>< constants' }
 
-  incrementNextAddress $ length constants'
+  incrementNextAddress pos $ length constants'
 
 
-compileCommand (Ast.Command "at" [value]) = do
+compileCommand (Ast.Command (_, "at")[value]) = do
   address <- resolveValue value
   pushBlock $ fromIntegral address
   return ()
 
-compileCommand (Ast.Command "define" [(Ast.Identifier name), value]) = do
+compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value]) = do
   context <- getCtx
   value' <- resolveValue value
 
   let vars = ctxVariables context
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE $ CompilationError $ "The variable '" ++ name ++ "' already exists."
+    liftExcept $ throwE $ CompilationError $ (pos, "The variable '" ++ name ++ "' already exists.")
 
   let vars' = Map.insert name value' vars
 
@@ -148,23 +148,24 @@ compileCommand _ = undefined
 
 compileInstruction :: Ast.Instruction -> Compile ()
 compileInstruction instruction = do
+  let (Ast.Instruction (pos, _) _) = instruction
   (opcode, target) <- renderInstruction instruction
   ctx <- getCtx
   let block = ctxCurrentBlock ctx
 
   putCtx $ ctx { ctxCurrentBlock = block Seq.>< (Seq.fromList [opcode, target]) }
 
-  incrementNextAddress 2
+  incrementNextAddress pos 2
 
 compileLabel :: Ast.Label -> Compile ()
-compileLabel (Ast.Label name) = do
+compileLabel (Ast.Label (pos, name)) = do
   context <- getCtx
 
   let vars = ctxVariables context
   let address = ctxNextAddress context
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE $ CompilationError $ "The name " ++ name ++ " is already being utilized."
+    liftExcept $ throwE $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
 
   let vars' = Map.insert name (fromIntegral address) vars
 
@@ -172,7 +173,7 @@ compileLabel (Ast.Label name) = do
   return ()
 
 renderInstruction :: Ast.Instruction -> Compile (Constant, Constant)
-renderInstruction (Ast.Instruction name argument) = do
+renderInstruction (Ast.Instruction (_, name) argument) = do
   let opcode = fromJust $ Map.lookup name opcodeTable
   target <- case argument of
     (Just value) -> resolveValue value
@@ -196,23 +197,25 @@ opcodeTable = Map.fromList [("nop", 0x00),
 
 resolveValue :: Ast.Value -> Compile Constant
 resolveValue (Ast.Identifier name) = resolveVariable name
-resolveValue (Ast.Constant x) = return (fromIntegral x)
+resolveValue (Ast.Constant (_, x)) = return (fromIntegral x)
 
-resolveVariable :: Name -> Compile Constant
-resolveVariable name = do
+resolveVariable :: Ast.Sourced Name -> Compile Constant
+resolveVariable (pos, name) = do
   vars <- ctxVariables <$> getCtx
   case Map.lookup name vars of
-    Nothing -> liftExcept $ throwE $ CompilationError $ "The variable '" ++ name ++ "' does not exist."
+    Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
     (Just x) -> return x
 
 tryFuseBlocks :: [(Address, Block)] -> Compile (Seq Word8)
 tryFuseBlocks blocks =
   let sorted = sortBy (compare `on` fst) blocks
-      problematic ((x,b1), (y,_)) = fromIntegral x + length b1 > fromIntegral y
+      problematic ((x,b1), (y,b2)) = fromIntegral x + length b1 > fromIntegral y && length b1 > 0 && length b2 > 0
       hasIssues = not (null blocks) && any problematic (zip sorted (tail sorted))
       in if hasIssues
-         then liftExcept $ throwE $ CompilationError "There are overlapping .at blocks"
+         then liftExcept $ throwE $ CompilationError $ (Ast.NoPos, "There are overlapping .at blocks")
          else return $ fuseBlocks sorted
+
+-- todo: add SourcePos to block
 
 fuseBlocks :: [(Address, Block)] -> Seq Word8
 fuseBlocks sorted =

@@ -8,14 +8,15 @@ module Asm.Ast
     Value(..),
     Label(..),
     Source,
+    Sourced,
     parse,
-    SourcePos
+    SourcePos(..)
   )
 where
 
 import qualified Text.Parsec as P
 import qualified Text.Parsec.Char as C
-import Text.Parsec (SourcePos)
+import qualified Text.Parsec (SourcePos)
 
 import Data.List (singleton)
 
@@ -27,10 +28,16 @@ type ParserState = ()
 
 type Parser = P.Parsec String ParserState
 
-type Name = String
-
-data Value = Identifier Name | Constant Int
+data SourcePos = Pos Text.Parsec.SourcePos | NoPos
   deriving Show
+
+type Sourced a = (SourcePos, a)
+type Name = Sourced String
+type Literal = Sourced Int
+
+data Value = Identifier Name | Constant Literal
+  deriving Show
+
 
 data Command = Command Name [Value]
   deriving Show
@@ -44,7 +51,10 @@ data Instruction = Instruction Name (Maybe Value)
 data Label = Label Name
   deriving Show
 
+
+
 type Source = [Operation]
+
 
 parseWithFilename :: String -> String -> Either P.ParseError Source
 parseWithFilename name code = P.runParser source () name code
@@ -95,12 +105,15 @@ label = do
 
 identifier :: Parser Name
 identifier = do
+  p <- P.getPosition
   f <- (C.letter <|> P.char '_')
   xs <- many (C.letter <|> P.char '_' <|> P.digit)
-  return $ f : xs
+  return $ (Pos p, f : xs)
 
-constant  :: Parser Int
-constant = P.try hexConstant <|> decimalConstant
+literal  :: Parser Literal
+literal = do
+  pos <- P.getPosition
+  (Pos pos,) <$> (P.try hexConstant <|> decimalConstant)
 
 decimalConstant :: Parser Int
 decimalConstant = read <$> P.many1 C.digit
@@ -113,7 +126,7 @@ hexConstant = do
 
 
 value :: Parser Value
-value = (Identifier <$> identifier) <|> (Constant <$> constant)
+value = (Identifier <$> identifier) <|> (Constant <$> literal)
 
 forcedWhitespace :: Parser ()
 forcedWhitespace = do
