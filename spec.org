@@ -1,0 +1,79 @@
+#+title: CPU SPEC
+
+
+| OPCode | Mnemonic | Mnemonic Meaning | Behavior                                              |
+|     00 | NOP      | No OPeration     | (no operation)                                        |
+|     01 | LDA      | LoaD A           | Copie [EE] para o AC                                  |
+|     02 | STA      | STore A          | Copie [AC] para a posi¸c˜ao de endere¸co EE             |
+|     03 | ADD      | ADD              | Some [EE] com [AC] e guarde o resultado em AC         |
+|     04 | SUB      | SUBtract         | Subtraia [EE] de [AC] e guarde o resultado em AC      |
+|     07 | IN       | read INput       | Leia um n´umero e guarde-o na posi¸c˜ao de endere¸co EE |
+|     08 | OUT      | write OUTput     | Imprima [EE]                                          |
+|     09 | BRK      | BReaK            | Pare                                                  |
+|     0A | JMP      | JuMP             | Desvie para EE (desvio incondicional)                 |
+|     0B | BPL      | Branch on PLus   | Desvie para EE se [AC] > 0                            |
+|     0D | BZE      | Branch on ZEro | Desvie para EE se [AC] = 0                            |
+|     0F | BMI      | Branch on MInus  | Desvie para EE se [AC] < 0                            |
+
+
+#+begin_src asm
+.define one 255
+.define x 200
+
+.at one
+.byte 1
+
+.at 0
+nop
+in x
+lda x
+add one
+sta x
+out x
+
+forever:
+jmp forever
+
+#+end_src
+
+Syntax:
+
+operations = operation newline operations | operation
+
+operation = command | instruction | label
+
+command = command_name f_ws command_args
+
+command_name = '.' identifier
+
+command_args = command_arg f_ws command_args | command_arg
+
+command_arg = value
+
+instruction = identifier | identifier f_ws value
+
+label = identifier ":"
+
+value = indentifier | constant
+
+constant = hex_constant | decimal_constant
+
+hex_constant = '0x' hex_digits
+
+hex_digits = hex_digit | hex_digit hex_digits
+
+hex_digit = '0' | ... | '9' | 'A' | ... | 'F' | 'a' ... 'f'
+
+decimal_constant = decimal_digits
+
+decimal_digits = decimal_digit | decimal_digit decimal_digits
+
+decimal_digit = '0' | ... | '9'
+
+identifier = alpha alpha_or_nums
+
+alpha = 'A' | ... | 'Z' | 'a' | ... | 'z' | '_'
+
+alpha_or_num = alpha | decimal_digit
+
+alpha_or_nums = alpha_or_num alpha_or_nums | alpha_or_num | empty

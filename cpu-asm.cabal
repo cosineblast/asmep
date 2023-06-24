@@ -25,14 +25,21 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Asm.Ast
+      Asm.Compile
+      Asm.Data
   other-modules:
       Paths_cpu_asm
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.7 && <5
+      array
+    , base >=4.7 && <5
+    , containers
+    , parsec
+    , text
+    , transformers
   default-language: Haskell2010
 
 executable cpu-asm-exe
@@ -43,8 +50,13 @@ executable cpu-asm-exe
       app
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      array
+    , base >=4.7 && <5
+    , containers
     , cpu-asm
+    , parsec
+    , text
+    , transformers
   default-language: Haskell2010
 
 test-suite cpu-asm-test
@@ -56,6 +68,11 @@ test-suite cpu-asm-test
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      array
+    , base >=4.7 && <5
+    , containers
     , cpu-asm
+    , parsec
+    , text
+    , transformers
   default-language: Haskell2010

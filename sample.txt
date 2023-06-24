@@ -1,0 +1,18 @@
+.byte 1 2 3
+
+.at 3
+
+.byte 3 4 5
+
+.at 6
+
+lda 10
+
+nop
+
+nop
+
+
+.at 254
+
+.byte 9
