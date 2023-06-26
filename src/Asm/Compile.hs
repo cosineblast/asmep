@@ -3,11 +3,13 @@ module Asm.Compile
    CompilationError) where
 
 import qualified Asm.Ast as Ast
+import Asm.Ast ((<!>))
+
 import Control.Monad.Trans.State.Strict (StateT, get, put, runStateT)
 import Control.Monad.Trans.Except (Except, throwE, runExcept)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
-import Control.Monad (when, foldM)
+import Control.Monad (when, foldM, guard)
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -19,7 +21,7 @@ import Data.Word (Word8)
 
 import Data.Maybe (fromJust)
 
-import Data.List (sortBy)
+import Data.List (find, sortBy)
 
 import Data.Function (on)
 
@@ -29,6 +31,12 @@ type Name = String
 
 type Block = Seq Word8
 
+data Chunk = Chunk {
+  chunkAddress :: Address,
+  chunkBlock :: Block,
+  chunkPos :: Ast.SourcePos }
+  deriving (Show)
+
 data LabelDependency = LabelDependency Name Ast.SourcePos
   deriving Show
 
@@ -36,7 +44,7 @@ data Context = Context { ctxVariables :: Map Name Constant,
                          ctxCurrentBlockAddress :: Address,
                          ctxCurrentBlock :: Block,
                          ctxNextAddress :: Address,
-                         ctxBlocks :: [(Address, Block)],
+                         ctxChunks :: [Chunk],
                          ctxDependencies :: Map Address LabelDependency
                        }
   deriving (Show)
@@ -69,7 +77,7 @@ compile source =
         ctxCurrentBlockAddress = 0,
         ctxCurrentBlock = Seq.empty,
         ctxNextAddress = 0,
-        ctxBlocks = [],
+        ctxChunks = [],
         ctxDependencies = Map.empty
         }
       in runCompile context $ run source
@@ -77,25 +85,25 @@ compile source =
 run :: Ast.Source -> Compile (Seq Word8)
 run source = do
   mapM_ compileOperation source
-  pushBlock 0
+  pushChunk (Ast.startPos 0 0) 0
   ctx <- getCtx
-  result <- tryFuseBlocks $ ctxBlocks ctx
+  result <- tryFuseChunks $ ctxChunks ctx
   cleanDependencies result
 
-pushBlock :: Address ->  Compile ()
-pushBlock address = do
+pushChunk :: Ast.SourcePos -> Address ->  Compile ()
+pushChunk pos address = do
   ctx <- getCtx
 
-  let (Context { ctxBlocks = blocks,
+  let (Context { ctxChunks = chunks,
                  ctxCurrentBlock = block,
                  ctxCurrentBlockAddress = currentAddress
                }) = ctx
 
   putCtx $ ctx { ctxCurrentBlock = Seq.empty,
-                              ctxCurrentBlockAddress = address,
-                              ctxBlocks = (currentAddress, block) : blocks,
-                              ctxNextAddress = address
-                            }
+                 ctxCurrentBlockAddress = address,
+                 ctxChunks = Chunk currentAddress block pos : chunks,
+                 ctxNextAddress = address
+               }
   return ()
 
 
@@ -130,9 +138,9 @@ compileCommand (Ast.Command (pos, "byte") values) = do
   incrementNextAddress pos $ length constants'
 
 
-compileCommand (Ast.Command (_, "at")[value]) = do
+compileCommand (Ast.Command (pos, "at")[value]) = do
   address <- resolveValue value
-  pushBlock $ fromIntegral address
+  pushChunk pos $ fromIntegral address
   return ()
 
 compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value]) = do
@@ -234,24 +242,30 @@ resolveVariable (pos, name) = do
     Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
     (Just x) -> return x
 
-tryFuseBlocks :: [(Address, Block)] -> Compile (Seq Word8)
-tryFuseBlocks blocks =
-  let sorted = sortBy (compare `on` fst) blocks
-      problematic ((x,b1), (y,b2)) = fromIntegral x + length b1 > fromIntegral y && length b1 > 0 && length b2 > 0
-      hasIssues = not (null blocks) && any problematic (zip sorted (tail sorted))
-      in if hasIssues
-         then liftExcept $ throwE $ CompilationError $ (Ast.NoPos, "There are overlapping .at blocks")
-         else return $ fuseBlocks sorted
+tryFuseChunks :: [Chunk] -> Compile (Seq Word8)
+tryFuseChunks chunks =
+  let sorted = sortBy (compare `on` chunkAddress) chunks
+      problematic ((Chunk x b1 _), (Chunk y b2 _)) = x + length b1 > y && length b1 > 0 && length b2 > 0
+      firstProblematic = guard (not (null chunks)) >> find problematic (zip sorted (tail sorted))
+      in case firstProblematic of
+         Just (b1, b2) -> liftExcept $ throwE $ overlappingChunks b1 b2
 
--- todo: add SourcePos to block
+         Nothing -> return $ fuseChunks sorted
 
-fuseBlocks :: [(Address, Block)] -> Seq Word8
-fuseBlocks sorted =
+overlappingChunks :: Chunk -> Chunk -> CompilationError
+overlappingChunks x y =
+  CompilationError (chunkPos x <!> chunkPos y,
+                    "There are overlapping chunks at address " ++ (show . chunkAddress) x
+                    ++ " and " ++
+                    (show . chunkAddress) y)
+
+fuseChunks :: [Chunk] -> Seq Word8
+fuseChunks sorted =
   let (lastAddr, result) = foldl step (0, Seq.empty) sorted
       in result Seq.>< Seq.fromList (replicate (256 - lastAddr) 0)
 
-step :: (Int, Seq Word8) -> (Address, Block) -> (Int, Seq Word8)
-step (currentAddr, result) (addr, block) =
+step :: (Int, Seq Word8) -> Chunk -> (Int, Seq Word8)
+step (currentAddr, result) (Chunk addr block _) =
   let currentAddr' = currentAddr
       nextAddr = addr + length block
       nextResult = result Seq.>< Seq.fromList (replicate (addr - currentAddr') 0) Seq.>< block

@@ -1,9 +1,7 @@
 
+
 nop
 
-
-jmp next
-
-next:
+.at 0
 
 nop

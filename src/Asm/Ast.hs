@@ -5,16 +5,18 @@ module Asm.Ast
     Command(..),
     Operation(..),
     Instruction(..),
-    Value(..),
     Label(..),
     Source,
     Sourced,
+    SourcePos(..),
+    startPos,
+    (<!>),
     parse,
-    SourcePos(..)
   )
 where
 
 import qualified Text.Parsec as P
+import qualified Text.Parsec.Pos
 import qualified Text.Parsec.Char as C
 import qualified Text.Parsec (SourcePos)
 
@@ -28,7 +30,7 @@ type ParserState = ()
 
 type Parser = P.Parsec String ParserState
 
-data SourcePos = Pos Text.Parsec.SourcePos | NoPos
+data SourcePos = Pos Text.Parsec.SourcePos | Paste SourcePos SourcePos | NoPos
   deriving Show
 
 type Sourced a = (SourcePos, a)
@@ -37,7 +39,6 @@ type Literal = Sourced Int
 
 data Value = Identifier Name | Constant Literal
   deriving Show
-
 
 data Command = Command Name [Value]
   deriving Show
@@ -52,9 +53,18 @@ data Label = Label Name
   deriving Show
 
 
-
 type Source = [Operation]
 
+
+posFromParsec :: P.SourcePos -> SourcePos
+posFromParsec p = Pos p
+
+infixr 6 <!>
+(<!>) :: SourcePos -> SourcePos -> SourcePos
+(<!>) = Paste
+
+startPos :: Int -> Int -> SourcePos
+startPos row col = posFromParsec $ Text.Parsec.Pos.newPos "input" row col
 
 parseWithFilename :: String -> String -> Either P.ParseError Source
 parseWithFilename name code = P.runParser source () name code
@@ -109,12 +119,12 @@ identifier = do
   p <- P.getPosition
   f <- (C.letter <|> P.char '_')
   xs <- many (C.letter <|> P.char '_' <|> P.digit)
-  return $ (Pos p, f : xs)
+  return $ (posFromParsec p, f : xs)
 
 literal  :: Parser Literal
 literal = do
   pos <- P.getPosition
-  (Pos pos,) <$> (P.try hexConstant <|> decimalConstant)
+  (posFromParsec pos,) <$> (P.try hexConstant <|> decimalConstant)
 
 decimalConstant :: Parser Int
 decimalConstant = read <$> P.many1 C.digit
