@@ -64,6 +64,7 @@ parse = parseWithFilename "input"
 
 source :: Parser [Operation]
 source = do
+  P.skipMany C.newline
   result <- operations
   P.skipMany C.newline
   return result

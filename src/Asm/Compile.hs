@@ -7,7 +7,7 @@ import Control.Monad.Trans.State.Strict (StateT, get, put, runStateT)
 import Control.Monad.Trans.Except (Except, throwE, runExcept)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
-import Control.Monad (when)
+import Control.Monad (when, foldM)
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -29,11 +29,15 @@ type Name = String
 
 type Block = Seq Word8
 
+data LabelDependency = LabelDependency Name Ast.SourcePos
+  deriving Show
+
 data Context = Context { ctxVariables :: Map Name Constant,
                          ctxCurrentBlockAddress :: Address,
                          ctxCurrentBlock :: Block,
                          ctxNextAddress :: Address,
-                         ctxBlocks :: [(Address, Block)]
+                         ctxBlocks :: [(Address, Block)],
+                         ctxDependencies :: Map Address LabelDependency
                        }
   deriving (Show)
 
@@ -65,7 +69,8 @@ compile source =
         ctxCurrentBlockAddress = 0,
         ctxCurrentBlock = Seq.empty,
         ctxNextAddress = 0,
-        ctxBlocks = []
+        ctxBlocks = [],
+        ctxDependencies = Map.empty
         }
       in runCompile context $ run source
 
@@ -74,7 +79,8 @@ run source = do
   mapM_ compileOperation source
   pushBlock 0
   ctx <- getCtx
-  tryFuseBlocks $ ctxBlocks ctx
+  result <- tryFuseBlocks $ ctxBlocks ctx
+  cleanDependencies result
 
 pushBlock :: Address ->  Compile ()
 pushBlock address = do
@@ -174,9 +180,10 @@ compileLabel (Ast.Label (pos, name)) = do
 
 renderInstruction :: Ast.Instruction -> Compile (Constant, Constant)
 renderInstruction (Ast.Instruction (_, name) argument) = do
+
   let opcode = fromJust $ Map.lookup name opcodeTable
   target <- case argument of
-    (Just value) -> resolveValue value
+    (Just value) -> resolveValueOrAddDependency value
     Nothing -> return 0
 
   return (opcode, target)
@@ -194,6 +201,27 @@ opcodeTable = Map.fromList [("nop", 0x00),
                             ("bpl", 0x0B),
                             ("bze", 0x0D),
                             ("bmi", 0x0F)]
+
+
+-- Resolves the given value, or adds a depdendency for it,
+-- returning placeHolderConstant
+resolveValueOrAddDependency :: Ast.Value -> Compile Constant
+resolveValueOrAddDependency (Ast.Identifier (pos, name)) = do
+  ctx <- getCtx
+  let Context { ctxNextAddress = next,
+                ctxVariables = vars,
+                ctxDependencies = deps } = ctx
+
+  case Map.lookup name vars of
+    Nothing -> do
+      putCtx $ ctx { ctxDependencies = Map.insert (next + 1) (LabelDependency name pos)  deps }
+      return placeHolderConstant
+    (Just x) -> return x
+
+resolveValueOrAddDependency (Ast.Constant (_, x)) = return $ fromIntegral x
+
+placeHolderConstant :: Constant
+placeHolderConstant = 128
 
 resolveValue :: Ast.Value -> Compile Constant
 resolveValue (Ast.Identifier name) = resolveVariable name
@@ -228,3 +256,15 @@ step (currentAddr, result) (addr, block) =
       nextAddr = addr + length block
       nextResult = result Seq.>< Seq.fromList (replicate (addr - currentAddr') 0) Seq.>< block
       in (nextAddr, nextResult)
+
+cleanDependencies :: Seq Word8 -> Compile (Seq Word8)
+cleanDependencies result = do
+  Context { ctxDependencies = deps,
+            ctxVariables = vars } <- getCtx
+
+  let go arr (addr, (LabelDependency name pos))
+        = case Map.lookup name vars of
+            Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
+            (Just value) -> return (Seq.update addr value arr)
+
+  foldM go result (Map.toList deps)

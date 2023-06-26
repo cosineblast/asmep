@@ -1,19 +1,9 @@
-.define x1 200
-.define x2 199
 
-.at 0
 nop
 
-in x1
-in x2
 
-lda x1
-add x2
+jmp next
 
-sta x1
+next:
 
-out x1
-
-.at 200
-.byte 20
-
+nop
