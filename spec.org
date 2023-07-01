@@ -77,3 +77,26 @@ alpha = 'A' | ... | 'Z' | 'a' | ... | 'z' | '_'
 alpha_or_num = alpha | decimal_digit
 
 alpha_or_nums = alpha_or_num alpha_or_nums | alpha_or_num | empty
+
+Lexer:
+
+identifier = letter (letter | digit)+
+
+dot =  '.'
+
+literal = hex_literal | integer_literal
+
+hex_literal = '0x' hex_chars
+
+hex_chars = hex_char | hex_chars
+
+hex_char = '0'..'9' | 'A' .. 'F' | 'a' .. 'f'
+
+delimiter = newline | ';'
+
+integer_literal = digits
+
+digits = digit digits | digit
+
+token = dot | literal | identifier
+

@@ -1,3 +1,6 @@
+
+{-# LANGUAGE GHC2021 #-}
+
 module Asm.Compile
   (compile,
    CompilationError) where

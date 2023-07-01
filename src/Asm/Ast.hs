@@ -1,18 +1,7 @@
+{-# LANGUAGE GHC2021 #-}
+
 module Asm.Ast
-  (
-    Name,
-    Value(..),
-    Command(..),
-    Operation(..),
-    Instruction(..),
-    Label(..),
-    Source,
-    Sourced,
-    SourcePos(..),
-    startPos,
-    (<!>),
-    parse,
-  )
+  -- (Name, Value(..), Command(..), Operation(..), Instruction(..), Label(..), Source, Sourced, SourcePos(..), startPos, (<!>), parse, source, token, thing)
 where
 
 import qualified Text.Parsec as P
@@ -24,7 +13,7 @@ import Data.List (singleton)
 
 import Control.Monad (void)
 
-import Control.Applicative (Alternative(..))
+import Control.Applicative (Alternative(..), (<*))
 
 type ParserState = ()
 
@@ -74,14 +63,18 @@ parse = parseWithFilename "input"
 
 source :: Parser [Operation]
 source = do
-  P.skipMany C.newline
   result <- operations
-  P.skipMany C.newline
+  C.spaces
+  P.eof
   return result
 
 
 operations :: Parser [Operation]
-operations = P.try (do x <- operation; P.skipMany C.newline; (x:)  <$> operations) <|> (singleton <$> operation)
+operations = (C.spaces >> operation <* P.skipMany (P.char ' ')) `P.sepEndBy`
+  (P.many1 (P.many (P.char ' ') >> newlineOrComment <* P.spaces))
+
+newlineOrComment :: Parser ()
+newlineOrComment = void $ C.newline <|> P.try (P.char ';' <* P.manyTill P.anyChar (P.try C.newline) )
 
 operation :: Parser Operation
 operation = (CommandOp <$> command) <|>
@@ -91,18 +84,18 @@ operation = (CommandOp <$> command) <|>
 command :: Parser Command
 command = do
   name <- commandName
-  forcedWhitespace
-  args <- value `P.sepBy` forcedWhitespace
+  P.many (P.char ' ')
+  args <- value `P.sepBy` (P.many (P.char ' '))
   return $ Command name args
 
 commandName :: Parser Name
-commandName = P.char '.' >> identifier
+commandName = P.char '.' >> P.skipMany (P.char ' ') >> identifier
 
 instruction :: Parser Instruction
 instruction = do
   name <- identifier
   let withArgument = do
-        forcedWhitespace
+        P.skipMany (P.char ' ')
         v <- value
         return $ Instruction name (Just v)
   let withoutArgument = return $ Instruction name Nothing
@@ -111,6 +104,7 @@ instruction = do
 label :: Parser Label
 label = do
   name <- identifier
+  P.skipMany (P.char ' ')
   void $ P.char ':'
   return $ Label name
 
@@ -139,7 +133,3 @@ hexConstant = do
 value :: Parser Value
 value = (Identifier <$> identifier) <|> (Constant <$> literal)
 
-forcedWhitespace :: Parser ()
-forcedWhitespace = do
-  void $ P.char ' '
-  return ()
