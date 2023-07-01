@@ -7,8 +7,6 @@ import Control.Monad
 
 
 import qualified Asm.Ast as Ast
-import Asm.Ast (parse)
-import Asm.Compile (compile)
 import qualified Asm.Compile as Compile
 import System.Console.GetOpt
 import System.Environment

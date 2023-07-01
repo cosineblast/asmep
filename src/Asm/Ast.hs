@@ -1,7 +1,20 @@
 {-# LANGUAGE GHC2021 #-}
 
 module Asm.Ast
-  -- (Name, Value(..), Command(..), Operation(..), Instruction(..), Label(..), Source, Sourced, SourcePos(..), startPos, (<!>), parse, source, token, thing)
+  (Name,
+   Value(..),
+   Command(..),
+   Operation(..),
+   Instruction(..),
+   Label(..),
+   Source,
+   Sourced,
+   SourcePos(..),
+   startPos,
+   (<!>),
+   parse,
+   parseWithFilename,
+   source)
 where
 
 import qualified Text.Parsec as P
@@ -9,11 +22,9 @@ import qualified Text.Parsec.Pos
 import qualified Text.Parsec.Char as C
 import qualified Text.Parsec (SourcePos)
 
-import Data.List (singleton)
-
 import Control.Monad (void)
 
-import Control.Applicative (Alternative(..), (<*))
+import Control.Applicative (Alternative(..))
 
 type ParserState = ()
 
@@ -84,7 +95,7 @@ operation = (CommandOp <$> command) <|>
 command :: Parser Command
 command = do
   name <- commandName
-  P.many (P.char ' ')
+  P.skipMany (P.char ' ')
   args <- value `P.sepBy` (P.many (P.char ' '))
   return $ Command name args
 

@@ -262,6 +262,7 @@ overlappingChunks x y =
                     ++ " and " ++
                     (show . chunkAddress) y)
 
+
 fuseChunks :: [Chunk] -> Seq Word8
 fuseChunks sorted =
   let (lastAddr, result) = foldl step (0, Seq.empty) sorted
