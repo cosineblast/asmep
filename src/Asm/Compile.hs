@@ -3,7 +3,7 @@
 
 module Asm.Compile
   (compile,
-   CompilationError) where
+   CompilationError(..)) where
 
 import qualified Asm.Ast as Ast
 import Asm.Ast ((<!>))

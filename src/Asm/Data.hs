@@ -15,19 +15,27 @@ import Data.Char
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Control.Monad (join)
+
 type ValidationError = Ast.Sourced String
 
+toEither :: Maybe ValidationError -> Either ValidationError ()
+toEither (Just err) = Left err
+toEither Nothing = Right ()
 
-validateAst :: Ast.Source -> Maybe ValidationError
-validateAst [] = Nothing
-validateAst ops = fromJust $ find isJust $ map validateOp ops
+
+validateAst :: Ast.Source -> Either ValidationError ()
+validateAst = toEither . validateAst'
+
+validateAst' :: Ast.Source -> Maybe ValidationError
+validateAst' [] = Nothing
+validateAst' ops = join $ find isJust $ map validateOp ops
 
 validateOp :: Ast.Operation -> Maybe ValidationError
 validateOp (Ast.InstructionOp instruction) = validateInstruction instruction
 validateOp (Ast.CommandOp command) = validateCommand command
 validateOp (Ast.LabelOp _) = Nothing
 
--- TODO: keep record of SourcePos
 -- TODO: consider making a SourcedMonad
 -- TODO: validate sizes
 

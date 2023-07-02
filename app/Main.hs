@@ -5,15 +5,27 @@ module Main (main) where
 
 import Control.Monad
 
+import qualified Data.ByteString as B
+
+import Data.Foldable (toList)
 
 import qualified Asm.Ast as Ast
+import qualified Asm.Data as Integrity
 import qualified Asm.Compile as Compile
-import System.Console.GetOpt
+import System.Console.GetOpt (OptDescr(..), getOpt, ArgDescr(..), ArgOrder(..))
 import System.Environment
 import System.Exit (ExitCode(..), exitWith)
 import Data.List (find)
 import Data.Bifunctor (first)
 import qualified Text.Parsec as P
+
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+
+import Data.Word (Word8)
+
+import Control.Monad.Trans.Except (ExceptT, runExceptT, except)
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 type FileName = String
 
@@ -73,21 +85,56 @@ main = do
       putStrLn "Multiple input files"
       printAdvice
 
-data Issue = ParseIssue P.ParseError | ComplilationIssue Compile.CompilationError
+data Issue = ParseIssue P.ParseError
+  | IntegrityIssue Integrity.ValidationError
+  | CompilationIssue Compile.CompilationError
   deriving (Show)
 
 
+
 runCompiler :: String -> String -> IO ()
-runCompiler input output = do
-  source <- readFile input
+runCompiler inputName outputName = do
+  source <- readFile inputName
 
-  putStrLn $ "Compiling " ++ input ++ " to " ++ output
+  putStrLn $ "Compiling " ++ inputName ++ "..."
 
-  case first ParseIssue $ Ast.parseWithFilename input source of
-    (Left issue) -> do
+  let handle t = except . first t
+
+  result <- runExceptT $ do
+    ast <- handle ParseIssue $ Ast.parseWithFilename inputName source
+    handle IntegrityIssue $ Integrity.validateAst ast
+    output <- handle CompilationIssue $ Compile.compile ast
+    lift $ writeOutput outputName output
+    return ()
+
+  case result of
+    (Left (ParseIssue issue)) -> do
       putStrLn "Parse Error:"
       print issue
+
+    (Left (IntegrityIssue (pos, issue))) -> do
+      putStrLn "Integrity Error:"
+      putStr "At "
+      printPos pos
+      putStrLn ":"
+      putStrLn issue
+
+    (Left (CompilationIssue (Compile.CompilationError (pos, issue)))) -> do
+      putStrLn "Compilation Error:"
+      putStr "At "
+      printPos pos
+      putStrLn ":"
+      putStrLn issue
+
     (Right _) -> do
-      putStrLn "Source Code OK!"
+      putStrLn $ "Finished writing to " ++ outputName
 
   return ()
+
+printPos :: Ast.SourcePos -> IO ()
+printPos (Ast.Paste l r)  = printPos l >> putStr ", " >> printPos r
+printPos Ast.NoPos = putStr "Unknown Position"
+printPos (Ast.Pos pos) = putStr $ show pos
+
+writeOutput :: String -> Seq Word8 -> IO ()
+writeOutput name result = B.writeFile name $ B.pack $ toList result

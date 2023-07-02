@@ -26,6 +26,7 @@ dependencies:
 - array
 - parsec
 - transformers
+- bytestring
 
 ghc-options:
 - -Wall

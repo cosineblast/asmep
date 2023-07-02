@@ -1,30 +1,6 @@
 
+.at 0
+nop
 
-.define tmp 200
-
-; The address of the number to read
-.define n 200
-
-; The result of the operation
-.define result 201
-
-; Literal 1
-.define one 255
-
-
-        in n
-
-sta result  ; result = n
-
-loop:
-
-lda n
-sub one
-
-    bze end
-
-
-. brah
-
-
-    end :
+.at 1
+nop
