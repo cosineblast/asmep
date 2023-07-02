@@ -12,7 +12,7 @@ import Control.Monad.Trans.State.Strict (StateT, get, put, runStateT)
 import Control.Monad.Trans.Except (Except, throwE, runExcept)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
-import Control.Monad (when, foldM, guard)
+import Control.Monad (when, foldM, guard, forM)
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -24,9 +24,9 @@ import Data.Word (Word8)
 
 import Data.Maybe (fromJust)
 
-import Data.List (find, sortBy)
+import Data.List (find, sortBy, groupBy)
 
-import Data.Function (on)
+import Data.Function (on, (&))
 
 type Constant = Word8
 type Address = Int
@@ -246,14 +246,20 @@ resolveVariable (pos, name) = do
     (Just x) -> return x
 
 tryFuseChunks :: [Chunk] -> Compile (Seq Word8)
-tryFuseChunks chunks =
+tryFuseChunks chunks = do
   let sorted = sortBy (compare `on` chunkAddress) chunks
-      problematic ((Chunk x b1 _), (Chunk y b2 _)) = x + length b1 > y && length b1 > 0 && length b2 > 0
-      firstProblematic = guard (not (null chunks)) >> find problematic (zip sorted (tail sorted))
-      in case firstProblematic of
-         Just (b1, b2) -> liftExcept $ throwE $ overlappingChunks b1 b2
 
-         Nothing -> return $ fuseChunks sorted
+  filtered <- removeDuplicateAddressChunks sorted
+
+  let problematic ((Chunk x b1 _), (Chunk y b2 _)) =
+        length b1 > 0 && length b2 > 0 && x + length b1 > y
+
+  let firstProblematic = guard (not (null chunks)) >>
+        find problematic (zip filtered (tail filtered))
+
+  case firstProblematic of
+    Just (b1, b2) -> liftExcept $ throwE $ overlappingChunks b1 b2
+    Nothing -> return $ fuseChunks filtered
 
 overlappingChunks :: Chunk -> Chunk -> CompilationError
 overlappingChunks x y =
@@ -262,11 +268,32 @@ overlappingChunks x y =
                     ++ " and " ++
                     (show . chunkAddress) y)
 
+removeDuplicateAddressChunks :: [Chunk] -> Compile [Chunk]
+removeDuplicateAddressChunks chunks =
+  let groups = chunks &
+        filter ((> 0) . length . chunkBlock) &
+        groupBy ((==) `on` chunkAddress)
+
+  in forM groups $ \group ->
+    case group of
+      [] -> error "Application Logic Error: Illegal State"
+      [x] -> return x
+      (x:y:_) -> liftExcept $ throwE $ overlappingChunks x y
+
+
+  
+
+
+  
+
+
 
 fuseChunks :: [Chunk] -> Seq Word8
 fuseChunks sorted =
   let (lastAddr, result) = foldl step (0, Seq.empty) sorted
       in result Seq.>< Seq.fromList (replicate (256 - lastAddr) 0)
+
+
 
 step :: (Int, Seq Word8) -> Chunk -> (Int, Seq Word8)
 step (currentAddr, result) (Chunk addr block _) =

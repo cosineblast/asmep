@@ -1,6 +1,6 @@
 
 .at 0
-nop
+lda 1
 
-.at 1
-nop
+.at 2
+in 2
