@@ -3,14 +3,14 @@
 
 module Main (main) where
 
-import Control.Monad
+import Control.Monad (when)
 
 import qualified Data.ByteString as B
 
 import Data.Foldable (toList)
 
 import qualified Asm.Ast as Ast
-import qualified Asm.Data as Integrity
+import qualified Asm.Integrity as Integrity
 import qualified Asm.Compile as Compile
 import System.Console.GetOpt (OptDescr(..), getOpt, ArgDescr(..), ArgOrder(..))
 import System.Environment
@@ -20,11 +20,10 @@ import Data.Bifunctor (first)
 import qualified Text.Parsec as P
 
 import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 
 import Data.Word (Word8)
 
-import Control.Monad.Trans.Except (ExceptT, runExceptT, except)
+import Control.Monad.Trans.Except (runExceptT, except)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 type FileName = String

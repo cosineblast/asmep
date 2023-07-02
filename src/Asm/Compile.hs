@@ -28,7 +28,7 @@ import Data.List (find, sortBy, groupBy)
 
 import Data.Function (on, (&))
 
-type Constant = Word8
+type Constant = Int
 type Address = Int
 type Name = String
 
@@ -115,13 +115,16 @@ compileOperation (Ast.CommandOp command) = compileCommand command
 compileOperation (Ast.InstructionOp instruction) = compileInstruction instruction
 compileOperation (Ast.LabelOp label) = compileLabel label
 
+fileByteCount :: Int
+fileByteCount = 512
+
 incrementNextAddress :: Ast.SourcePos -> Int -> Compile ()
 incrementNextAddress pos n = do
   ctx <- getCtx
 
   let address = ctxNextAddress ctx
 
-  when (address + n > 256) $ do
+  when (address + n > fileByteCount) $ do
     liftExcept $ throwE $ CompilationError (pos, "This operation goes past the end of RAM")
 
   putCtx $ ctx {ctxNextAddress = address + n}
@@ -130,7 +133,7 @@ incrementNextAddress pos n = do
 
 compileCommand :: Ast.Command -> Compile ()
 compileCommand (Ast.Command (pos, "byte") values) = do
-  constants <- mapM resolveValue values
+  constants <- mapM resolveByte values
   let constants' = Seq.fromList constants
 
   ctx <- getCtx
@@ -141,14 +144,19 @@ compileCommand (Ast.Command (pos, "byte") values) = do
   incrementNextAddress pos $ length constants'
 
 
-compileCommand (Ast.Command (pos, "at")[value]) = do
-  address <- resolveValue value
-  pushChunk pos $ fromIntegral address
+compileCommand (Ast.Command (pos, "at")[(Ast.Identifier (pos', precision)), value]) = do
+  address <- resolveValue' value
+  address' <- case precision of
+        "word" -> ensureByte pos' address >> (return $ address * 2)
+        "byte" -> return address
+        _ -> error "Application Logic Error: unknown at precision"
+
+  pushChunk pos address'
   return ()
 
 compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value]) = do
   context <- getCtx
-  value' <- resolveValue value
+  value' <- resolveValue' value
 
   let vars = ctxVariables context
 
@@ -179,25 +187,39 @@ compileLabel (Ast.Label (pos, name)) = do
   context <- getCtx
 
   let vars = ctxVariables context
-  let address = ctxNextAddress context
+  let byteAddress = ctxNextAddress context
+  let wordAddress = byteAddress `div` 2
 
   when (name `Map.member` vars) $ do
     liftExcept $ throwE $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
 
-  let vars' = Map.insert name (fromIntegral address) vars
+  let vars' = Map.insert name wordAddress vars
 
   putCtx $ context { ctxVariables = vars' }
   return ()
 
-renderInstruction :: Ast.Instruction -> Compile (Constant, Constant)
-renderInstruction (Ast.Instruction (_, name) argument) = do
+renderInstruction :: Ast.Instruction -> Compile (Word8, Word8)
+renderInstruction (Ast.Instruction (pos, name) argument) = do
 
   let opcode = fromJust $ Map.lookup name opcodeTable
   target <- case argument of
-    (Just value) -> resolveValueOrAddDependency value
+    (Just value) -> resolveByteOrAddDependency value
     Nothing -> return 0
 
-  return (opcode, target)
+  ensureAligned pos
+
+  return (fromIntegral opcode, target)
+
+ensureAligned :: Ast.SourcePos -> Compile ()
+ensureAligned pos = do
+  Context { ctxNextAddress = addr } <- getCtx
+  when (addr `mod` 2 /= 0) $ do
+    liftExcept $ throwE $ misalignedInstruction pos addr
+
+misalignedInstruction :: Ast.SourcePos -> Address -> CompilationError
+misalignedInstruction pos addr = CompilationError $
+  (pos, "The current address (" ++  show addr ++ ") is misaligned (odd).\nCan't generate instruction.")
+
 
 opcodeTable :: Map String Constant
 opcodeTable = Map.fromList [("nop", 0x00),
@@ -216,8 +238,8 @@ opcodeTable = Map.fromList [("nop", 0x00),
 
 -- Resolves the given value, or adds a depdendency for it,
 -- returning placeHolderConstant
-resolveValueOrAddDependency :: Ast.Value -> Compile Constant
-resolveValueOrAddDependency (Ast.Identifier (pos, name)) = do
+resolveByteOrAddDependency :: Ast.Value -> Compile Word8
+resolveByteOrAddDependency (Ast.Identifier (pos, name)) = do
   ctx <- getCtx
   let Context { ctxNextAddress = next,
                 ctxVariables = vars,
@@ -227,16 +249,33 @@ resolveValueOrAddDependency (Ast.Identifier (pos, name)) = do
     Nothing -> do
       putCtx $ ctx { ctxDependencies = Map.insert (next + 1) (LabelDependency name pos)  deps }
       return placeHolderConstant
-    (Just x) -> return x
+    (Just x) -> ensureByte pos x
 
-resolveValueOrAddDependency (Ast.Constant (_, x)) = return $ fromIntegral x
+resolveByteOrAddDependency (Ast.Constant (pos, x)) = ensureByte pos x
 
-placeHolderConstant :: Constant
+ensureByte :: Ast.SourcePos -> Constant -> Compile Word8
+ensureByte pos x
+  | x > 255 = liftExcept $ throwE $ byteLiteralOverflow (pos, x)
+  | otherwise = return (fromIntegral x)
+
+placeHolderConstant :: Word8
 placeHolderConstant = 128
 
-resolveValue :: Ast.Value -> Compile Constant
-resolveValue (Ast.Identifier name) = resolveVariable name
-resolveValue (Ast.Constant (_, x)) = return (fromIntegral x)
+resolveByte :: Ast.Value -> Compile Word8
+resolveByte (Ast.Identifier name@(pos, _)) = do
+  v <- resolveVariable name
+  ensureByte pos v
+
+resolveByte (Ast.Constant (pos, x)) = ensureByte pos x
+
+byteLiteralOverflow :: Ast.Sourced Constant -> CompilationError
+byteLiteralOverflow (pos, value) = CompilationError $ (pos, "The literal " ++ show value ++ " does not fit in a byte.")
+
+
+
+resolveValue' :: Ast.Value -> Compile Constant
+resolveValue' (Ast.Identifier name) = resolveVariable name
+resolveValue' (Ast.Constant (_, x)) = return x
 
 resolveVariable :: Ast.Sourced Name -> Compile Constant
 resolveVariable (pos, name) = do
@@ -291,7 +330,7 @@ removeDuplicateAddressChunks chunks =
 fuseChunks :: [Chunk] -> Seq Word8
 fuseChunks sorted =
   let (lastAddr, result) = foldl step (0, Seq.empty) sorted
-      in result Seq.>< Seq.fromList (replicate (256 - lastAddr) 0)
+      in result Seq.>< Seq.fromList (replicate (fileByteCount - lastAddr) 0)
 
 
 
@@ -310,6 +349,8 @@ cleanDependencies result = do
   let go arr (addr, (LabelDependency name pos))
         = case Map.lookup name vars of
             Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
-            (Just value) -> return (Seq.update addr value arr)
+            (Just value) -> do
+              value' <- ensureByte pos value
+              return (Seq.update addr value' arr)
 
   foldM go result (Map.toList deps)

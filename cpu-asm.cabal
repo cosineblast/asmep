@@ -27,7 +27,7 @@ library
   exposed-modules:
       Asm.Ast
       Asm.Compile
-      Asm.Data
+      Asm.Integrity
   other-modules:
       Paths_cpu_asm
   hs-source-dirs:

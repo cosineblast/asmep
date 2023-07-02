@@ -1,6 +1,6 @@
 {-# LANGUAGE GHC2021 #-}
 
-module Asm.Data
+module Asm.Integrity
   (ValidationError,
    validateAst) where
 
@@ -60,8 +60,9 @@ validateCommand (Ast.Command (pos, name) _)
   | name `Set.notMember` validCommandNames = Just $ (pos, "Unknown command name " ++ name)
 
 validateCommand (Ast.Command (_, "define" )[(Ast.Identifier _), _]) = Nothing
-validateCommand (Ast.Command (_, "at") [_]) = Nothing
-validateCommand (Ast.Command (_, "byte") [_]) = Nothing
+validateCommand (Ast.Command (_, "at") [(Ast.Identifier (_, "word")), _]) = Nothing
+validateCommand (Ast.Command (_, "at") [(Ast.Identifier (_, "byte")), _]) = Nothing
+validateCommand (Ast.Command (_, "byte") (_:_)) = Nothing
 
 validateCommand (Ast.Command (pos, _) _) = Just $ (pos, "Illegal combination of commands and arguments")
 

@@ -144,4 +144,3 @@ hexConstant = do
 
 value :: Parser Value
 value = (Identifier <$> identifier) <|> (Constant <$> literal)
-

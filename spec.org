@@ -105,3 +105,4 @@ token = dot | literal | identifier
 - Implement compilation error on misalign for instructions
 - Implement .at precision
 - Increase binary size from 256 to 512
+- Divide labels by two
