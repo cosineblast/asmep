@@ -100,3 +100,8 @@ digits = digit digits | digit
 
 token = dot | literal | identifier
 
+
+* TODO
+- Implement compilation error on misalign for instructions
+- Implement .at precision
+- Increase binary size from 256 to 512

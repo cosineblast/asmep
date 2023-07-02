@@ -74,6 +74,7 @@ parse = parseWithFilename "input"
 
 source :: Parser [Operation]
 source = do
+  P.skipMany $ (P.many (P.char ' ') >> newlineOrComment <* P.spaces)
   result <- operations
   C.spaces
   P.eof
@@ -110,7 +111,7 @@ instruction = do
         v <- value
         return $ Instruction name (Just v)
   let withoutArgument = return $ Instruction name Nothing
-  withArgument <|> withoutArgument
+  P.try withArgument <|> withoutArgument
 
 label :: Parser Label
 label = do

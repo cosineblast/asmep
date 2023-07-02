@@ -43,6 +43,10 @@ validateInstruction :: Ast.Instruction -> Maybe ValidationError
 validateInstruction (Ast.Instruction (pos, "nop") (Just _))
   = Just (pos, "NOP instruction must not have an argument")
 
+validateInstruction (Ast.Instruction (pos, "brk") (Just _))
+  = Just (pos, "BRK instruction must not have an argument")
+
+validateInstruction (Ast.Instruction (_, "brk") Nothing) = Nothing
 validateInstruction (Ast.Instruction (_, "nop") Nothing) = Nothing
 validateInstruction (Ast.Instruction (pos, name) Nothing) =
   Just $ (pos, "Instruction " ++ name  ++ " expected an argument.")
