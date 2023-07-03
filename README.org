@@ -17,7 +17,7 @@ parte das distribuições.
 
 ** Como Usar
 
-As opções de uso do executável são listas pela opção --help do programa:
+As opções de uso do executável podem ser listadas pela opção ~--help~ do programa:
 
 
 #+begin_src text
@@ -30,8 +30,9 @@ Options:
 
 O assembler recebe o código fonte do programa e gera um arquivo .bin que pode ser carregado no compontente de RAM do programa logisim evolution.
 
-O logisim evolution (testado na versão 3.8.0) é capaz de detectar o formato do arquivo gerado, clicando com o botão direito no componente de RAM e depois
-acessando a opção "Load Image" e selecionando a opção "Big Endian" (caso não esteja já selecionanda).
+O logisim evolution (testado na versão 3.8.0) é capaz de detectar o formato do arquivo gerado.
+Para carregar o arquivo gerado em uma instância do componente de RAM, basta clicar com o botão direito
+e acessar a opção "Load Image", selecionar o arquivo, e usar a opção "Big Endian", caso não esteja selecionada.
 
 Em geral, para compilar um arquivo ~source~ e gerar um arquivo ~output.bin~, use ~./asmep source -o output.bin~
 
@@ -52,15 +53,15 @@ Comentários de linha são feitos com o caracter ~;~, mas é comum ver ~;;~ ou ~
 [[https://en.wikipedia.org/wiki/Directive_(programming)][Diretivas]] são comandos gerais para instruir o compilador sobre a saída. Estas começam com ~.~, e seus argumentos são
 separados por espaços. Atualmente, o compilador possui 3 diretivas: ~.byte~, ~.at~ e ~.define~
 
-**** .byte
+**** ~.byte~
 A diretiva ~.byte~ serve para colocar um ou mais bytes no arquivo gerado. Os argumentos podem ser números em decimal,
 ou em hexadecimal prefixadas por ~0x~. Os valores devem estar no intervalo [0,255] e podem ser constantes nomeadas
-(veja [[.define]]).
+(veja [[~.define~][~.define~]]).
 
 #+begin_src asm
 
     .byte 9 0xA 0xB 12      ; Insere os bytes 9, 10, 11 e 12 no arquivo binário, no começo do binário
-    .byte 1 2 3             ; Após isso, os bytes 2,2, e 3 são inseridos
+    .byte 1 2 3             ; Após isso, os bytes 1, 2, e 3 são inseridos
 
 #+end_src
 
@@ -69,20 +70,20 @@ ou em hexadecimal prefixadas por ~0x~. Os valores devem estar no intervalo [0,25
 Tecnicamente, utilizando a apenas a diretiva ~.byte~ é possível especificar todo o conteúdo da RAM,
 mas isso é um pouco inconveniente.
 
-**** .at
+**** ~.at~
 A diretiva ~.at~ nos permite definir em que localização da RAM devem ser emitidos os próximos conteúdos gerados pelo compilador.
 ~.at byte~ especifica o índice (baseado em zero) do byte em que queremos que o conteúdo seguinte seja gerado.
-Múltiplos ~.at~ são permitidos.
+Múltiplos ~.at~ são permitidos no código fonte.
 
 #+begin_src asm
 
-    .byte 0x10 0x20 0x30 0x40; Insere 0x(10,2,3,4) no começo do binário
+    .byte 0x10 0x20 0x30 0x40; Emite estes valores no começo do binário
 
-    .at byte 10 ; Agora o conteúdo seguinte será gerado a partir byte de indice 10
+    .at byte 10 ; Agora o conteúdo seguinte será emitido a partir byte de indice 10
 
-    .byte 0x90 0x99 ; 0x90 e 0x99 serão inseridos nos bytes de indice 10 e 11
+    .byte 0x90 0x99 ; 0x90 e 0x99 serão emitidos nos bytes de indice 10 e 11
 
-    .at byte 4; Agora o conteúdo será inserido a partir do byte de indice 4
+    .at byte 4; Agora o conteúdo será emitido a partir do byte de indice 4
 
     .byte 0x50 0x60 0x70 0x80
 
@@ -103,7 +104,7 @@ também existe a diretive ~.at word~, que funciona como ~.at byte~, mas que mult
 Isto é útil para definir valores em endereços específicos que serão acessados pela CPU na execução.
 
 
-**** .define
+**** ~.define~
 
 O comando .define serve para nomear certas constantes na compilação do binário, de maneira similar a variáveis,
 mas em tempo de compilação. A sintaxe é ~.define nome valor~, onde ~nome~ é o nome a ser associado, e ~valor~ o valor a ser associado.
@@ -131,19 +132,19 @@ Por conta disto, linhas que começam com um dos mnemônicos a seguir causam a in
 respectivos valores numéricos no binário:
 
 
-| OPCode | Mnemonic | Significado     | Comportamento                                         |
-|     00 | nop      | No OPeration    | (no operation)                                        |
-|     01 | lda      | LoaD A          | Copie [EE] para o AC                                  |
-|     02 | sta      | STore A         | Copie AC para a posi¸c˜ao de endere¸co EE               |
-|     03 | add      | ADD             | Some [EE] com AC e guarde o resultado em AC           |
-|     04 | sub      | SUBtract        | Subtraia [EE] de AC e guarde o resultado em AC        |
-|     07 | in       | read INput      | Leia um n´umero e guarde-o na posi¸c˜ao de endere¸co EE |
-|     08 | out      | write OUTput    | Imprima [EE]                                          |
-|     09 | brk      | BReaK           | Pare                                                  |
-|     0A | jmp      | JuMP            | Desvie para EE (desvio incondicional)                 |
-|     0B | bpl      | Branch on PLus  | Desvie para EE se AC > 0                              |
-|     0D | bze      | Branch on ZEro  | Desvie para EE se AC = 0                              |
-|     0F | bmi      | Branch on MInus | Desvie para EE se AC < 0                              |
+| OPCode | Mnemonic | Significado     | Comportamento                                       |
+|     00 | nop      | No OPeration    | (no operation)                                      |
+|     01 | lda      | LoaD A          | Copie [EE] para o AC                                |
+|     02 | sta      | STore A         | Copie AC para a posição de endereço EE              |
+|     03 | add      | ADD             | Some [EE] com AC e guarde o resultado em AC         |
+|     04 | sub      | SUBtract        | Subtraia [EE] de AC e guarde o resultado em AC      |
+|     07 | in       | read INput      | Leia um número e guarde-o na posição de endereço EE |
+|     08 | out      | write OUTput    | Imprima [EE]                                        |
+|     09 | brk      | BReaK           | Pare                                                |
+|     0A | jmp      | JuMP            | Desvie para EE (desvio incondicional)               |
+|     0B | bpl      | Branch on PLus  | Desvie para EE se AC > 0                            |
+|     0D | bze      | Branch on ZEro  | Desvie para EE se AC = 0                            |
+|     0F | bmi      | Branch on MInus | Desvie para EE se AC < 0                            |
 
 Exceto pelas instruções ~brk~ e ~nop~, o argumento de cada instrução deve ser um valor numéricos ou constante nomeada no intervalo [0, 255].
 
