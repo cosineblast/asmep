@@ -47,7 +47,7 @@ printHelp = do
 
 printVersion :: IO ()
 printVersion = do
-  putStrLn "asmep 0.0.1"
+  putStrLn "asmep 0.1.0.0"
   putStrLn "figurantpp - Renan Ribeiro Marcelino - Universidade de São Paulo"
 
 printAdvice :: IO ()
