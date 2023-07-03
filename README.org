@@ -1,0 +1,225 @@
+
+* asmep
+
+Este projeto é um assembler para a CPU do EP3 da matéria de Álgebra Booleana,
+o objetivo é simplificar a produção de arquivos binários para a produção de programas
+para a CPU. Aqui assumimos que o leitor já tenha lido e entendido o enunciado deste EP.
+
+Nota: Este é um projeto informal, espere imperfeições.
+
+** Como Acessar
+
+O código fonte está disponibilizado pelo repositório no github, e um executável
+compilado para linux será providenciado na página de *releases* do projeto. 
+
+O executável possui poucas dependências dinâmicas, e deve funcionar bem na maior
+parte das distribuições.
+
+** Como Usar
+
+As opções de uso do executável são listas pela opção --help do programa:
+
+
+#+begin_src text
+Usage: asmep [options] file
+Options:
+  --help, -h  Show this help message
+  --version, -v  Show version
+  --output, -o, Name of the output file to compile
+#+end_src
+
+O assembler recebe o código fonte do programa e gera um arquivo .bin que pode ser carregado no compontente de RAM do programa logisim evolution.
+
+O logisim evolution (testado na versão 3.8.0) é capaz de detectar o formato do arquivo gerado, clicando com o botão direito no componente de RAM e depois
+acessando a opção "Load Image" e selecionando a opção "Big Endian" (caso não esteja já selecionanda).
+
+Em geral, para compilar um arquivo ~source~ e gerar um arquivo ~output.bin~, use ~./asmep source -o output.bin~
+
+Para inspecionar o conteúdo do arquivo gerado, é recomendado o uso de programas como o ~xxd~.
+
+Aqui utilizaremos o termo "binário" para referir ao arquivo gerado pelo compilador.
+
+** Estrutura do código fonte
+
+O compilador sempre gera um arquivo binário contendo 512 bytes, que representam a RAM inicial da CPU.
+O papel do código fonte é especificar qual deve ser o conteúdo desses 512 bytes.
+A sintaxe consiste de diretivas, instruções e labels, com cada linha podendo ter no máximo um destas.
+Comentários de linha são feitos com o caracter ~;~, mas é comum ver ~;;~ ou ~;;;~ no código fonte por preferência.
+
+
+*** Diretivas
+
+[[https://en.wikipedia.org/wiki/Directive_(programming)][Diretivas]] são comandos gerais para instruir o compilador sobre a saída. Estas começam com ~.~, e seus argumentos são
+separados por espaços. Atualmente, o compilador possui 3 diretivas: ~.byte~, ~.at~ e ~.define~
+
+**** .byte
+A diretiva ~.byte~ serve para colocar um ou mais bytes no arquivo gerado. Os argumentos podem ser números em decimal,
+ou em hexadecimal prefixadas por ~0x~. Os valores devem estar no intervalo [0,255] e podem ser constantes nomeadas
+(veja [[.define]]).
+
+#+begin_src asm
+
+    .byte 9 0xA 0xB 12      ; Insere os bytes 9, 10, 11 e 12 no arquivo binário, no começo do binário
+    .byte 1 2 3             ; Após isso, os bytes 2,2, e 3 são inseridos
+
+#+end_src
+
+É recomendado compilar um arquivo com o conteúdo dos exemplos e observar a saída com xxd ou carregando na ram do logisim.
+
+Tecnicamente, utilizando a apenas a diretiva ~.byte~ é possível especificar todo o conteúdo da RAM,
+mas isso é um pouco inconveniente.
+
+**** .at
+A diretiva ~.at~ nos permite definir em que localização da RAM devem ser emitidos os próximos conteúdos gerados pelo compilador.
+~.at byte~ especifica o índice (baseado em zero) do byte em que queremos que o conteúdo seguinte seja gerado.
+Múltiplos ~.at~ são permitidos.
+
+#+begin_src asm
+
+    .byte 0x10 0x20 0x30 0x40; Insere 0x(10,2,3,4) no começo do binário
+
+    .at byte 10 ; Agora o conteúdo seguinte será gerado a partir byte de indice 10
+
+    .byte 0x90 0x99 ; 0x90 e 0x99 serão inseridos nos bytes de indice 10 e 11
+
+    .at byte 4; Agora o conteúdo será inserido a partir do byte de indice 4
+
+    .byte 0x50 0x60 0x70 0x80
+
+    ; Resultado:
+    ;   0    1    2    3
+    ;  0x10 0x20 0x30 0x40
+
+    ;   4    5    6    7
+    ;  0x50 0x60 0x70 0x80
+
+    ;   8    9   10   11
+    ;  0x00 0x00 0x90 0x99
+#+end_src
+
+Sendo uma word um valor de 16 bits, considerando que na CPU os endreços de memória são baseados em words (a RAM possui 256 words),
+também existe a diretive ~.at word~, que funciona como ~.at byte~, mas que multiplica o argumento por 2. (~.at word 5~ é o mesmo que ~.at byte 10~).
+
+Isto é útil para definir valores em endereços específicos que serão acessados pela CPU na execução.
+
+
+**** .define
+
+O comando .define serve para nomear certas constantes na compilação do binário, de maneira similar a variáveis,
+mas em tempo de compilação. A sintaxe é ~.define nome valor~, onde ~nome~ é o nome a ser associado, e ~valor~ o valor a ser associado.
+O nome pode conter caracteres em uppercase, lowercase, números e underline.
+Todos os lugares da linguagem que aceitam literais numéricas (como ~10~ ou ~0xFF~) aceitam constantes nomeadas.
+Constantes nomeadas não podem ser utilizadas antes de serem declaradas.
+
+Exemplo:
+
+#+begin_src asm
+    .define magic_address 123
+    .define magic_number 42
+
+    .at byte magic_address
+    .byte magic_number magic_number ; Escreve 42, 42 no endereço 123
+#+end_src
+
+
+*** Instruções
+
+Apesar da diretiva ~.byte~ poder ser utilizada para compilar instruções - exemplo: ~.byte 1 100~, carregar word na posição 100 no acumulador -
+um assembler não está completo se não disponibilizar uma maneira de gerar instruções baseadas em seus nomes (nomes estes também conhecidos como mnemônicos).
+
+Por conta disto, linhas que começam com um dos mnemônicos a seguir causam a inserção de seus
+respectivos valores numéricos no binário:
+
+
+| OPCode | Mnemonic | Significado     | Comportamento                                         |
+|     00 | nop      | No OPeration    | (no operation)                                        |
+|     01 | lda      | LoaD A          | Copie [EE] para o AC                                  |
+|     02 | sta      | STore A         | Copie AC para a posi¸c˜ao de endere¸co EE               |
+|     03 | add      | ADD             | Some [EE] com AC e guarde o resultado em AC           |
+|     04 | sub      | SUBtract        | Subtraia [EE] de AC e guarde o resultado em AC        |
+|     07 | in       | read INput      | Leia um n´umero e guarde-o na posi¸c˜ao de endere¸co EE |
+|     08 | out      | write OUTput    | Imprima [EE]                                          |
+|     09 | brk      | BReaK           | Pare                                                  |
+|     0A | jmp      | JuMP            | Desvie para EE (desvio incondicional)                 |
+|     0B | bpl      | Branch on PLus  | Desvie para EE se AC > 0                              |
+|     0D | bze      | Branch on ZEro  | Desvie para EE se AC = 0                              |
+|     0F | bmi      | Branch on MInus | Desvie para EE se AC < 0                              |
+
+Exceto pelas instruções ~brk~ e ~nop~, o argumento de cada instrução deve ser um valor numéricos ou constante nomeada no intervalo [0, 255].
+
+Exemplo:
+
+#+begin_src asm
+
+    ; Nota: poderiamos ter utilizados constantes nomeadas aqui :v
+
+    in 100 ; 7 100 - Lê o valor do pino de entrada no endereço 100
+    in 101 ; 7 101 - Lê o valor do pino de entrada no endereço 101
+
+    lda 100 ; 1 100 - Carrega o valor no endeerço 100 no acumulador
+
+    add 101 ; 3 101 - Soma conteúdo do indice 101 no acumulador
+
+    sta 101 ; 2 101 - Salva o conteúdo acumulador no endereço 101
+
+    out 101 ; 8 101 - Escreve 101 no pino de saída
+
+#+end_src
+
+*** Labels
+
+Instruções de desvio como ~jmp~ e ~bpl~ recebem como parâmetro o endereço em que desejamos pular.
+Apesar de ser possível definir estes endereços manualmente, um assembler nos permite definir utilizar labels,
+nomes que se referem a posições no código. Para definir uma label, use ~nome:~ onde ~nome~ é o nome da label.
+Labels podem ser utilizadas em instruções para realizar pulos, que podem ser utilizados para implementar loops e condicionais:
+
+#+begin_src asm
+    ;; Lê numeros do pino de entrada até que um destes seja negativo
+
+    .define n 100
+
+try_again:                      ; do {
+
+    in n                        ; n = input();
+    lda n
+
+    bpl try_again               ; } while (n >= 0);
+    bze try_again
+
+    out n                       ; write(n)
+
+    brk
+#+end_src
+
+Diferente de constantes nomeadas, labels podem se referenciadas no código antes de serem declaradas.
+(Assim é possível pular para alguma parte posterior no código).
+
+#+begin_src asm
+
+    ;; Lê dois numeros e escreve o menor deles
+
+    .define n 100
+    .define m 101
+
+    in n                        ; n = input();
+    in m                        ; m = input();
+
+    lda n
+    sub m
+    bpl skip_assignment         ; if (n - m  <= 0) {
+
+    lda n
+    sta m                       ; m = n
+
+skip_assignment:                 ; }
+
+    out m                       ; write(m)
+
+#+end_src
+
+
+** Exemplos
+Na pasta samples existem exemplos de programas-exemplo simples.
+
+** Licensa
+Todo o código aqui é distribuído sobre a licensa BSD3.

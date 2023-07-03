@@ -39,7 +39,7 @@ flags = [
 
 printHelp :: IO ()
 printHelp = do
-  putStrLn "Usage: epasm [options] file"
+  putStrLn "Usage: asmep [options] file"
   putStrLn "Options:"
   putStrLn "  --help, -h  Show this help message"
   putStrLn "  --version, -v  Show version"
@@ -47,7 +47,7 @@ printHelp = do
 
 printVersion :: IO ()
 printVersion = do
-  putStrLn "epasm 0.0.1"
+  putStrLn "asmep 0.0.1"
   putStrLn "figurantpp - Renan Ribeiro Marcelino - Universidade de São Paulo"
 
 printAdvice :: IO ()

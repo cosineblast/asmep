@@ -6,22 +6,21 @@ cabal-version: 1.12
 
 name:           cpu-asm
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/cpu-asm#readme>
-homepage:       https://github.com/githubuser/cpu-asm#readme
-bug-reports:    https://github.com/githubuser/cpu-asm/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2023 Author name here
+description:    Please see the README on GitHub at <https://github.com/figurantpp/asmep>
+homepage:       https://github.com/figurantpp/asmep#readme
+bug-reports:    https://github.com/figurantpp/asmep/issues
+author:         Renan Ribeiro Marcelino
+maintainer:     figurantpp@protonmail.com
+copyright:      2023 Renan Ribeiro Marcelino
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    README.md
-    CHANGELOG.md
+    README.org
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/cpu-asm
+  location: https://github.com/figurantpp/asmep
 
 library
   exposed-modules:

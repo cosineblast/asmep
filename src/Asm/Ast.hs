@@ -74,7 +74,7 @@ parse = parseWithFilename "input"
 
 source :: Parser [Operation]
 source = do
-  P.skipMany $ (P.many (P.char ' ') >> newlineOrComment <* P.spaces)
+  P.skipMany $ (void (P.char ' ') <|> newlineOrComment)
   result <- operations
   C.spaces
   P.eof
@@ -97,7 +97,7 @@ command :: Parser Command
 command = do
   name <- commandName
   P.skipMany (P.char ' ')
-  args <- value `P.sepBy` (P.many (P.char ' '))
+  args <- value `P.sepEndBy` (P.many (P.char ' '))
   return $ Command name args
 
 commandName :: Parser Name

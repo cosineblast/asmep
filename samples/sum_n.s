@@ -1,14 +1,22 @@
 
-    ;;  TODO: Document this
-    ;;
+    ;; This program reads a number N and computes the sum of the
+    ;; first N integers.
+
+    ;; The number to compute the sum for
     .define n 0xc0
 
+    ;; The accumulated result of the computation
     .define result 0xc1
 
+    ;; There is no instruction to directly load a constant value into
+    ;; the accumulator, so we must store the constant somewhere in memory
+
+    ;; Constant Zero
     .define zero 254
     .at byte zero
     .byte 0 0
 
+    ;; Constant One
     .define one 255
     .at word one
     .byte 0 1
@@ -40,5 +48,4 @@ end_loop:
 
     out result                  ; output(result)
 
-.at byte 0x20
     brk
