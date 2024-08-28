@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 
-name:           cpu-asm
+name:           asmep
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/figurantpp/asmep>
 homepage:       https://github.com/figurantpp/asmep#readme
@@ -28,7 +28,7 @@ library
       Asm.Compile
       Asm.Integrity
   other-modules:
-      Paths_cpu_asm
+      Paths_asmep
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
@@ -37,43 +37,46 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
+    , effectful
     , parsec
     , text
     , transformers
   default-language: Haskell2010
 
-executable cpu-asm-exe
+executable asmep-exe
   main-is: Main.hs
   other-modules:
-      Paths_cpu_asm
+      Paths_asmep
   hs-source-dirs:
       app
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
+    , asmep
     , base >=4.7 && <5
     , bytestring
     , containers
-    , cpu-asm
+    , effectful
     , parsec
     , text
     , transformers
   default-language: Haskell2010
 
-test-suite cpu-asm-test
+test-suite asmep-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_cpu_asm
+      Paths_asmep
   hs-source-dirs:
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
+    , asmep
     , base >=4.7 && <5
     , bytestring
     , containers
-    , cpu-asm
+    , effectful
     , parsec
     , text
     , transformers

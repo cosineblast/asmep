@@ -1,4 +1,4 @@
-name:                cpu-asm
+name:                asmep
 version:             0.1.0.0
 github:              "figurantpp/asmep"
 license:             BSD3
@@ -26,6 +26,7 @@ dependencies:
 - parsec
 - transformers
 - bytestring
+- effectful
 
 ghc-options:
 - -Wall
@@ -42,7 +43,7 @@ library:
   source-dirs: src
 
 executables:
-  cpu-asm-exe:
+  asmep-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -50,10 +51,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - cpu-asm
+    - asmep
 
 tests:
-  cpu-asm-test:
+  asmep-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -61,4 +62,4 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - cpu-asm
+    - asmep
