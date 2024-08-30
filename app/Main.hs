@@ -100,7 +100,7 @@ runCompiler inputName outputName = do
     ast <- handle ParseIssue $ Ast.parseWithFilename inputName source
     handle IntegrityIssue $ Integrity.validateAst ast
     output <- handle CompilationIssue $ Compile.compile ast
-    lift $ writeOutput outputName output
+    liftIO $ writeOutput outputName output
     return ()
 
   case result of
