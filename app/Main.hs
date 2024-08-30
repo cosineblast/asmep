@@ -3,8 +3,6 @@
 
 module Main (main) where
 
-import Control.Monad (when)
-
 import qualified Data.ByteString as B
 
 import Data.Foldable (toList)
@@ -23,8 +21,7 @@ import Data.Sequence (Seq)
 
 import Data.Word (Word8)
 
-import Control.Monad.Trans.Except (runExceptT, except)
-import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Except
 
 type FileName = String
 
@@ -97,7 +94,7 @@ runCompiler inputName outputName = do
 
   putStrLn $ "Compiling " ++ inputName ++ "..."
 
-  let handle t = except . first t
+  let handle t = ExceptT . return . first t
 
   result <- runExceptT $ do
     ast <- handle ParseIssue $ Ast.parseWithFilename inputName source

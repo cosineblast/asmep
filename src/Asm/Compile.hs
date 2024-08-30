@@ -8,9 +8,8 @@ module Asm.Compile
 import qualified Asm.Ast as Ast
 import Asm.Ast ((<!>))
 
-import Control.Monad.Trans.State.Strict (StateT, get, put, runStateT)
-import Control.Monad.Trans.Except (Except, throwE, runExcept)
-import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.State.Strict (StateT, get, put, runStateT)
+import Control.Monad.Except
 
 import Control.Monad (when, foldM, guard, forM)
 
@@ -125,7 +124,7 @@ incrementNextAddress pos n = do
   let address = ctxNextAddress ctx
 
   when (address + n > fileByteCount) $ do
-    liftExcept $ throwE $ CompilationError (pos, "This operation goes past the end of RAM")
+    liftExcept $ throwError $ CompilationError (pos, "This operation goes past the end of RAM")
 
   putCtx $ ctx {ctxNextAddress = address + n}
 
@@ -161,7 +160,7 @@ compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value])
   let vars = ctxVariables context
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE $ CompilationError $ (pos, "The variable '" ++ name ++ "' already exists.")
+    liftExcept $ throwError $ CompilationError $ (pos, "The variable '" ++ name ++ "' already exists.")
 
   let vars' = Map.insert name value' vars
 
@@ -191,7 +190,7 @@ compileLabel (Ast.Label (pos, name)) = do
   let wordAddress = byteAddress `div` 2
 
   when (name `Map.member` vars) $ do
-    liftExcept $ throwE $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
+    liftExcept $ throwError $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
 
   let vars' = Map.insert name wordAddress vars
 
@@ -214,7 +213,7 @@ ensureAligned :: Ast.SourcePos -> Compile ()
 ensureAligned pos = do
   Context { ctxNextAddress = addr } <- getCtx
   when (addr `mod` 2 /= 0) $ do
-    liftExcept $ throwE $ misalignedInstruction pos addr
+    liftExcept $ throwError $ misalignedInstruction pos addr
 
 misalignedInstruction :: Ast.SourcePos -> Address -> CompilationError
 misalignedInstruction pos addr = CompilationError $
@@ -255,7 +254,7 @@ resolveByteOrAddDependency (Ast.Constant (pos, x)) = ensureByte pos x
 
 ensureByte :: Ast.SourcePos -> Constant -> Compile Word8
 ensureByte pos x
-  | x > 255 = liftExcept $ throwE $ byteLiteralOverflow (pos, x)
+  | x > 255 = liftExcept $ throwError $ byteLiteralOverflow (pos, x)
   | otherwise = return (fromIntegral x)
 
 placeHolderConstant :: Word8
@@ -281,7 +280,7 @@ resolveVariable :: Ast.Sourced Name -> Compile Constant
 resolveVariable (pos, name) = do
   vars <- ctxVariables <$> getCtx
   case Map.lookup name vars of
-    Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
+    Nothing -> liftExcept $ throwError $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
     (Just x) -> return x
 
 tryFuseChunks :: [Chunk] -> Compile (Seq Word8)
@@ -297,7 +296,7 @@ tryFuseChunks chunks = do
         find problematic (zip filtered (tail filtered))
 
   case firstProblematic of
-    Just (b1, b2) -> liftExcept $ throwE $ overlappingChunks b1 b2
+    Just (b1, b2) -> liftExcept $ throwError $ overlappingChunks b1 b2
     Nothing -> return $ fuseChunks filtered
 
 overlappingChunks :: Chunk -> Chunk -> CompilationError
@@ -317,7 +316,7 @@ removeDuplicateAddressChunks chunks =
     case group of
       [] -> error "Application Logic Error: Illegal State"
       [x] -> return x
-      (x:y:_) -> liftExcept $ throwE $ overlappingChunks x y
+      (x:y:_) -> liftExcept $ throwError $ overlappingChunks x y
 
 
   
@@ -348,7 +347,7 @@ cleanDependencies result = do
 
   let go arr (addr, (LabelDependency name pos))
         = case Map.lookup name vars of
-            Nothing -> liftExcept $ throwE $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
+            Nothing -> liftExcept $ throwError $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
             (Just value) -> do
               value' <- ensureByte pos value
               return (Seq.update addr value' arr)
