@@ -1,5 +1,5 @@
 
-{-# LANGUAGE GHC2021 #-}
+{-# LANGUAGE GHC2021, DataKinds #-}
 
 module Asm.Compile
   (compile,
@@ -8,8 +8,11 @@ module Asm.Compile
 import qualified Asm.Ast as Ast
 import Asm.Ast ((<!>))
 
-import Control.Monad.State.Strict
-import Control.Monad.Except
+import Polysemy
+import Polysemy.State
+import Polysemy.Error
+
+import Control.Monad
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -52,10 +55,7 @@ data Context = Context { ctxVariables :: Map Name Constant,
 data CompilationError = CompilationError (Ast.Sourced String)
   deriving (Show)
 
-type Compile a = StateT Context (Except CompilationError) a
-
-runCompile :: Context -> Compile a -> Either CompilationError a
-runCompile ctx s = runExcept $ fst <$> runStateT s ctx
+type Compilation = '[State Context, Error CompilationError]
 
 compile :: Ast.Source -> Either CompilationError (Seq Word8)
 compile source =
@@ -67,17 +67,20 @@ compile source =
         ctxChunks = [],
         ctxDependencies = Map.empty
         }
-      in runCompile context $ run source
+      in execute source
+      & evalState context
+      & runError
+      & run
 
-run :: Ast.Source -> Compile (Seq Word8)
-run source = do
+execute :: Ast.Source -> Sem Compilation (Seq Word8)
+execute source = do
   mapM_ compileOperation source
   pushChunk (Ast.startPos 0 0) 0
   ctx <- get
   result <- tryFuseChunks $ ctxChunks ctx
   cleanDependencies result
 
-pushChunk :: Ast.SourcePos -> Address ->  Compile ()
+pushChunk :: Ast.SourcePos -> Address -> Sem Compilation ()
 pushChunk pos address = do
   ctx <- get
 
@@ -94,7 +97,7 @@ pushChunk pos address = do
   return ()
 
 
-compileOperation :: Ast.Operation -> Compile ()
+compileOperation :: Ast.Operation -> Sem Compilation ()
 compileOperation (Ast.CommandOp command) = compileCommand command
 compileOperation (Ast.InstructionOp instruction) = compileInstruction instruction
 compileOperation (Ast.LabelOp label) = compileLabel label
@@ -102,20 +105,20 @@ compileOperation (Ast.LabelOp label) = compileLabel label
 fileByteCount :: Int
 fileByteCount = 512
 
-incrementNextAddress :: Ast.SourcePos -> Int -> Compile ()
+incrementNextAddress :: Ast.SourcePos -> Int -> Sem Compilation ()
 incrementNextAddress pos n = do
   ctx <- get
 
   let address = ctxNextAddress ctx
 
   when (address + n > fileByteCount) $ do
-    throwError $ CompilationError (pos, "This operation goes past the end of RAM")
+    throw $ CompilationError (pos, "This operation goes past the end of RAM")
 
   put $ ctx {ctxNextAddress = address + n}
 
 
 
-compileCommand :: Ast.Command -> Compile ()
+compileCommand :: Ast.Command -> Sem Compilation ()
 compileCommand (Ast.Command (pos, "byte") values) = do
   constants <- mapM resolveByte values
   let constants' = Seq.fromList constants
@@ -145,7 +148,7 @@ compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value])
   let vars = ctxVariables context
 
   when (name `Map.member` vars) $ do
-    throwError $ CompilationError $ (pos, "The variable '" ++ name ++ "' already exists.")
+    throw $ CompilationError $ (pos, "The variable '" ++ name ++ "' already exists.")
 
   let vars' = Map.insert name value' vars
 
@@ -155,7 +158,7 @@ compileCommand (Ast.Command (_, "define") [(Ast.Identifier (pos, name)), value])
 
 compileCommand _ = undefined
 
-compileInstruction :: Ast.Instruction -> Compile ()
+compileInstruction :: Ast.Instruction -> Sem Compilation ()
 compileInstruction instruction = do
   let (Ast.Instruction (pos, _) _) = instruction
   (opcode, target) <- renderInstruction instruction
@@ -166,7 +169,7 @@ compileInstruction instruction = do
 
   incrementNextAddress pos 2
 
-compileLabel :: Ast.Label -> Compile ()
+compileLabel :: Ast.Label -> Sem Compilation ()
 compileLabel (Ast.Label (pos, name)) = do
   context <- get
 
@@ -175,14 +178,14 @@ compileLabel (Ast.Label (pos, name)) = do
   let wordAddress = byteAddress `div` 2
 
   when (name `Map.member` vars) $ do
-    throwError $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
+    throw $ CompilationError $ (pos, "The name " ++ name ++ " is already being utilized.")
 
   let vars' = Map.insert name wordAddress vars
 
   put $ context { ctxVariables = vars' }
   return ()
 
-renderInstruction :: Ast.Instruction -> Compile (Word8, Word8)
+renderInstruction :: Ast.Instruction -> Sem Compilation (Word8, Word8)
 renderInstruction (Ast.Instruction (pos, name) argument) = do
 
   let opcode = fromJust $ Map.lookup name opcodeTable
@@ -194,11 +197,11 @@ renderInstruction (Ast.Instruction (pos, name) argument) = do
 
   return (fromIntegral opcode, target)
 
-ensureAligned :: Ast.SourcePos -> Compile ()
+ensureAligned :: Ast.SourcePos -> Sem Compilation ()
 ensureAligned pos = do
   Context { ctxNextAddress = addr } <- get
   when (addr `mod` 2 /= 0) $ do
-    throwError $ misalignedInstruction pos addr
+    throw $ misalignedInstruction pos addr
 
 misalignedInstruction :: Ast.SourcePos -> Address -> CompilationError
 misalignedInstruction pos addr = CompilationError $
@@ -222,7 +225,7 @@ opcodeTable = Map.fromList [("nop", 0x00),
 
 -- Resolves the given value, or adds a depdendency for it,
 -- returning placeHolderConstant
-resolveByteOrAddDependency :: Ast.Value -> Compile Word8
+resolveByteOrAddDependency :: Ast.Value -> Sem Compilation Word8
 resolveByteOrAddDependency (Ast.Identifier (pos, name)) = do
   ctx <- get
   let Context { ctxNextAddress = next,
@@ -237,15 +240,15 @@ resolveByteOrAddDependency (Ast.Identifier (pos, name)) = do
 
 resolveByteOrAddDependency (Ast.Constant (pos, x)) = ensureByte pos x
 
-ensureByte :: Ast.SourcePos -> Constant -> Compile Word8
+ensureByte :: Ast.SourcePos -> Constant -> Sem Compilation Word8
 ensureByte pos x
-  | x > 255 = throwError $ byteLiteralOverflow (pos, x)
+  | x > 255 = throw $ byteLiteralOverflow (pos, x)
   | otherwise = return (fromIntegral x)
 
 placeHolderConstant :: Word8
 placeHolderConstant = 128
 
-resolveByte :: Ast.Value -> Compile Word8
+resolveByte :: Ast.Value -> Sem Compilation Word8
 resolveByte (Ast.Identifier name@(pos, _)) = do
   v <- resolveVariable name
   ensureByte pos v
@@ -257,18 +260,18 @@ byteLiteralOverflow (pos, value) = CompilationError $ (pos, "The literal " ++ sh
 
 
 
-resolveValue' :: Ast.Value -> Compile Constant
+resolveValue' :: Ast.Value -> Sem Compilation Constant
 resolveValue' (Ast.Identifier name) = resolveVariable name
 resolveValue' (Ast.Constant (_, x)) = return x
 
-resolveVariable :: Ast.Sourced Name -> Compile Constant
+resolveVariable :: Ast.Sourced Name -> Sem Compilation Constant
 resolveVariable (pos, name) = do
   vars <- ctxVariables <$> get
   case Map.lookup name vars of
-    Nothing -> throwError $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
+    Nothing -> throw $ CompilationError $ (pos, "The variable '" ++ name ++ "' does not exist.")
     (Just x) -> return x
 
-tryFuseChunks :: [Chunk] -> Compile (Seq Word8)
+tryFuseChunks :: [Chunk] -> Sem Compilation (Seq Word8)
 tryFuseChunks chunks = do
   let sorted = sortBy (compare `on` chunkAddress) chunks
 
@@ -281,7 +284,7 @@ tryFuseChunks chunks = do
         find problematic (zip filtered (tail filtered))
 
   case firstProblematic of
-    Just (b1, b2) -> throwError $ overlappingChunks b1 b2
+    Just (b1, b2) -> throw $ overlappingChunks b1 b2
     Nothing -> return $ fuseChunks filtered
 
 overlappingChunks :: Chunk -> Chunk -> CompilationError
@@ -291,7 +294,7 @@ overlappingChunks x y =
                     ++ " and " ++
                     (show . chunkAddress) y)
 
-removeDuplicateAddressChunks :: [Chunk] -> Compile [Chunk]
+removeDuplicateAddressChunks :: [Chunk] -> Sem Compilation [Chunk]
 removeDuplicateAddressChunks chunks =
   let groups = chunks &
         filter ((> 0) . length . chunkBlock) &
@@ -301,13 +304,13 @@ removeDuplicateAddressChunks chunks =
     case group of
       [] -> error "Application Logic Error: Illegal State"
       [x] -> return x
-      (x:y:_) -> throwError $ overlappingChunks x y
+      (x:y:_) -> throw $ overlappingChunks x y
 
 
-  
 
 
-  
+
+
 
 
 
@@ -325,14 +328,14 @@ step (currentAddr, result) (Chunk addr block _) =
       nextResult = result Seq.>< Seq.fromList (replicate (addr - currentAddr') 0) Seq.>< block
       in (nextAddr, nextResult)
 
-cleanDependencies :: Seq Word8 -> Compile (Seq Word8)
+cleanDependencies :: Seq Word8 -> Sem Compilation (Seq Word8)
 cleanDependencies result = do
   Context { ctxDependencies = deps,
             ctxVariables = vars } <- get
 
   let go arr (addr, (LabelDependency name pos))
         = case Map.lookup name vars of
-            Nothing -> throwError $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
+            Nothing -> throw $ CompilationError $ (pos, "Unknown variable or label: '" ++ name ++  "'.")
             (Just value) -> do
               value' <- ensureByte pos value
               return (Seq.update addr value' arr)
