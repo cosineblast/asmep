@@ -1,5 +1,5 @@
 
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, DataKinds, FlexibleContexts #-}
 
 module Main (main) where
 
@@ -21,7 +21,10 @@ import Data.Sequence (Seq)
 
 import Data.Word (Word8)
 
-import Control.Monad.Except
+import Polysemy
+import Polysemy.Error
+import Control.Monad
+import Data.Function ((&))
 
 type FileName = String
 
@@ -87,6 +90,8 @@ data Issue = ParseIssue P.ParseError
   deriving (Show)
 
 
+as :: Member (Error Issue) r => (e -> Issue) -> (Either e a) -> Sem r a
+as err value = fromEither (first err value)
 
 runCompiler :: String -> String -> IO ()
 runCompiler inputName outputName = do
@@ -94,13 +99,11 @@ runCompiler inputName outputName = do
 
   putStrLn $ "Compiling " ++ inputName ++ "..."
 
-  let handle t = ExceptT . return . first t
-
-  result <- runExceptT $ do
-    ast <- handle ParseIssue $ Ast.parseWithFilename inputName source
-    handle IntegrityIssue $ Integrity.validateAst ast
-    output <- handle CompilationIssue $ Compile.compile ast
-    liftIO $ writeOutput outputName output
+  result <- runM $ runError $ do
+    ast <- Ast.parseWithFilename inputName source & as ParseIssue
+    Integrity.validateAst ast & as IntegrityIssue
+    output <- Compile.compile ast & as CompilationIssue
+    embed $ writeOutput outputName output
     return ()
 
   case result of

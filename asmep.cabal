@@ -37,7 +37,6 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
-    , mtl
     , parsec
     , polysemy
     , text
@@ -56,7 +55,6 @@ executable asmep-exe
     , base >=4.7 && <5
     , bytestring
     , containers
-    , mtl
     , parsec
     , polysemy
     , text
@@ -76,7 +74,6 @@ test-suite asmep-test
     , base >=4.7 && <5
     , bytestring
     , containers
-    , mtl
     , parsec
     , polysemy
     , text
